@@ -1,6 +1,6 @@
 
 
-import asyncio, aiomysql
+import aiomysql
 
 import logging
 logging.basicConfig(level = logging.INFO)
@@ -8,7 +8,7 @@ logging.basicConfig(level = logging.INFO)
 def log(sql):
     logging.info("SQL: %s" %sql)
 
-
+__pool = None
 
 # 创建全局连接池，每个http请求都可以从连接池中直接获取数据库链接
 # 不必频繁的打开和关闭数据库链接
@@ -21,7 +21,7 @@ async def create_pool(loop, **kw):
         user = kw['user'],
         password = kw['password'],
         db = kw['db'],
-        charset = kw.get('charset', 'utf-8'),
+        charset = kw.get('charset', 'utf8'),
         autocommit = kw.get('autocommit', True),
         maxsize = kw.get('maxsize', 10),
         minsize = kw.get('minsize', 1),
@@ -33,7 +33,7 @@ async def create_pool(loop, **kw):
 async def select(sql, args, size = None):
     log(sql)
     global __pool
-    with (await __pool) as conn:
+    with (await __pool.get()) as conn:
         # A cursor which returns results as a dict
         cur = await conn.cursor(aiomysql.DictCursor)
         # yield from cursor.execute('SELECT * FROM t1 WHERE id=?', (5,))
@@ -49,6 +49,7 @@ async def select(sql, args, size = None):
 # INSERT, UPDATE, DELETE
 async def execute(sql, args):
     log(sql)
+    global __pool
     with (await __pool) as conn:
         try:
             cur = await conn.cursor()
@@ -65,6 +66,7 @@ def create_args_string(num):
         L.append('?')
     return ', '.join(L)
 
+# 表示一列
 class Field(object):
 
     def __init__(self, name, column_type, primary_key, default):
@@ -87,6 +89,22 @@ class IntegerField(Field):
 
     def __init__(self, name=None, primary_key=False, default=None, ddl='bigint'):
         super().__init__(name, ddl, primary_key, default)
+
+class BooleanField(Field):
+
+    def __init__(self, name=None, default=False, ddl='boolean'):
+        super().__init__(name, ddl, False, default)
+
+class FloatField(Field):
+
+    def __init__(self, name=None, primary_key=False, default=0.0, ddl='real'):
+        super().__init__(name, ddl, primary_key, default)
+
+class TextField(Field):
+
+    def __init__(self, name=None, default=None, ddl='text'):
+        super().__init__(name, ddl, False, default)
+
 
 # 把class看成是metaclass创建出来的实例
 # metaclass是类的模版，所以必须从'type'类型派生，'type'是所有类的元类
@@ -133,7 +151,7 @@ class ModelMetaclass(type):
         # 这里返回的对象attrs已被更新
         return type.__new__(cls, name, bases, attrs)
 
-# 定义Model, 从dict继承，又可以像引用普通字段那样写（user.id）
+# 定义Model, 从dict继承，又可以像引用普通字段那样写（user.id/ __getattr__）
 class Model(dict, metaclass = ModelMetaclass):
 
     def __init__(self, **kw):
@@ -161,6 +179,7 @@ class Model(dict, metaclass = ModelMetaclass):
                 setattr(self, key, value)
         return value
 
+    # @classmethod,可以直接用类名寻找方法
     @classmethod
     async def find(cls, pk):
         'find object by primary key'
@@ -168,6 +187,10 @@ class Model(dict, metaclass = ModelMetaclass):
         if len(rs) == 0:
             return None
         return cls(**rs[0])
+
+    ############### TODO: finAll(), findNumber(), update(), remove()
+    # @classmethod
+    # async def findAll(cls):
 
     async def save(self):
         args = list(map(self.getValueOrDefault, self.__fields__))
@@ -177,16 +200,18 @@ class Model(dict, metaclass = ModelMetaclass):
             logging.warning('failed to insert record: affected rows: %s' % rows)
 
 
-# ORM
-# 创建实例： user = User(id = 123, name = 'Jack')
-# 存入数据库： user.insert()
-# 查询所有User对象： users = User.findAll()
-class User(Model):
-    # 以下三个属性没有self. ，所以是类的属性，不是实例的属性
-    # 所以，在类级别上定义的属性用来描述User对象和表的对应关系
-    # 而实例属性必须通过__init__()来初始化
-    __table__ = 'users'
-
-    id = IntegerField(primary_key = True)
-    name = StringField()
-
+# # ORM
+# # 创建实例： user = User(id = 123, name = 'Jack')
+# # 存入数据库： user.insert()
+# # 查询所有User对象： users = User.findAll()
+# class User(Model):
+#     # 以下三个属性没有self. ，所以是类的属性，不是实例的属性
+#     # 所以，在类级别上定义的属性用来描述User对象和表的对应关系
+#     # 而实例属性必须通过__init__()来初始化
+#     # 由于可以传入关键字参数，所以不冲突
+#     __table__ = 'users'
+#
+#     id = IntegerField(primary_key = True)
+#     name = StringField()
+#
+# u = User(id = 123, name = 'Jack')
