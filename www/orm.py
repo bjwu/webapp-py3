@@ -33,7 +33,7 @@ async def create_pool(loop, **kw):
 async def select(sql, args, size = None):
     log(sql)
     global __pool
-    with (await __pool.get()) as conn:
+    with (await __pool) as conn:
         # A cursor which returns results as a dict
         cur = await conn.cursor(aiomysql.DictCursor)
         # yield from cursor.execute('SELECT * FROM t1 WHERE id=?', (5,))
@@ -78,12 +78,10 @@ class Field(object):
     def __str__(self):
         return '<%s,%s:%s>' % (self.__class__.__name__, self.column_type, self.name)
 
-
 class StringField(Field):
 
     def __init__(self, name=None, primary_key=False, default=None, ddl='varchar(100)'):
         super().__init__(name, ddl, primary_key, default)
-
 
 class IntegerField(Field):
 
@@ -144,7 +142,7 @@ class ModelMetaclass(type):
         attrs['__table__'] = tableName
         attrs['__primary_key__'] = primaryKey
         attrs['__fields__'] = fields # 除主键外的属性名
-        attrs['__select__'] = 'select `%s`, %s from `%s`' %(primaryKey, ', '.join(escaped_field), tableName)
+        attrs['__select__'] = 'select %s, %s from %s' %(primaryKey, ', '.join(escaped_field), tableName)
         attrs['__insert__'] = 'insert into `%s` (%s, `%s`) value (%s)' %(tableName, ', '.join(escaped_field), primaryKey, create_args_string(len(escaped_field)+1))
         attrs['__update__'] = 'update `%s` set %s where `%s` =?' % (tableName, ', '.join(map(lambda f:'`%s`=?' %(mappings.get(f).name or f), fields)), primaryKey)
         attrs['__delete__'] = 'delete from `%s` where `%s`=?' %(tableName, primaryKey)
@@ -186,11 +184,40 @@ class Model(dict, metaclass = ModelMetaclass):
         rs = await select('%s where `%s`=?' %(cls.__select__, cls.__primary_key__), [pk], 1)
         if len(rs) == 0:
             return None
+        ### cls指代该类，而该类是个dict
         return cls(**rs[0])
 
-    ############### TODO: finAll(), findNumber(), update(), remove()
-    # @classmethod
-    # async def findAll(cls):
+    # TODO: can add more kw key
+    @classmethod
+    async def findAll(cls, where=None, args=None, **kw):
+        'find all object'
+        sql = '%s' %cls.__select__
+        if where:
+            sql += ' where %s' %where
+        if args is None:
+            args = []
+        orderBy = kw.get(' orderBy', None)
+        if orderBy:
+            sql += 'order by %s' %orderBy
+        rs = await select(sql, args)
+        if len(rs) == 0:
+            return None
+        return [cls(**r) for r in rs]
+
+    async def update(self):
+        'update object'
+        args = list(map(self.getValue, self.__fields__))
+        args.append(self.getValue(self.__primary_key__))
+        rows = await execute(self.__update__, args)
+        if rows != 1:
+            logging.warning('failed to update: affected rows: %s' % rows)
+
+    async def remove(self):
+        'remove object'
+        args = [self.getValue(self.__primary_key__)]
+        rows = await execute(self.__delete__, args)
+        if rows != 1:
+            logging.warning('failed to delete record: affected rows: %s' % rows)
 
     async def save(self):
         args = list(map(self.getValueOrDefault, self.__fields__))
@@ -200,18 +227,3 @@ class Model(dict, metaclass = ModelMetaclass):
             logging.warning('failed to insert record: affected rows: %s' % rows)
 
 
-# # ORM
-# # 创建实例： user = User(id = 123, name = 'Jack')
-# # 存入数据库： user.insert()
-# # 查询所有User对象： users = User.findAll()
-# class User(Model):
-#     # 以下三个属性没有self. ，所以是类的属性，不是实例的属性
-#     # 所以，在类级别上定义的属性用来描述User对象和表的对应关系
-#     # 而实例属性必须通过__init__()来初始化
-#     # 由于可以传入关键字参数，所以不冲突
-#     __table__ = 'users'
-#
-#     id = IntegerField(primary_key = True)
-#     name = StringField()
-#
-# u = User(id = 123, name = 'Jack')
