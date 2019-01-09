@@ -6,7 +6,7 @@ import logging
 logging.basicConfig(level = logging.INFO)
 
 def log(sql):
-    logging.info("SQL: %s" %sql)
+    logging.info("orm.py: SQL: %s" %sql)
 
 __pool = None
 
@@ -43,7 +43,7 @@ async def select(sql, args, size = None):
         else:
             rs = await cur.fetchall()
             await cur.close()
-        logging.info('rows returned: %s' %len(rs))
+        logging.info('orm.py: rows returned: %s' %len(rs))
         return rs
 
 # INSERT, UPDATE, DELETE
@@ -116,7 +116,7 @@ class ModelMetaclass(type):
             return type.__new__(cls, name, bases, attrs)
         # 获取table名称
         tableName = attrs.get('__table__', None) or name
-        logging.info('found model %s (table: %s)' %(name, tableName))
+        logging.info('orm.py: found model %s (table: %s)' %(name, tableName))
         # 获取所有的Field和主键名
         mappings = dict()
         fields = []
@@ -124,7 +124,7 @@ class ModelMetaclass(type):
         # k:key, v:value
         for k, v in attrs.items():
             if isinstance(v, Field):
-                logging.info(' found mapping: %s ==> %s' %(k, v))
+                logging.info('orm.py: found mapping: %s ==> %s' %(k, v))
                 mappings[k] = v
                 if v.primary_key:
                     # 找到主健
@@ -173,7 +173,7 @@ class Model(dict, metaclass = ModelMetaclass):
             field = self.__mappings__[key]
             if field.default is not None:
                 value = field.default() if callable(field.default) else field.default
-                logging.debug('using default value for %s: %s' %(key, str(value)))
+                logging.debug('orm.py: using default value for %s: %s' %(key, str(value)))
                 setattr(self, key, value)
         return value
 
@@ -210,20 +210,20 @@ class Model(dict, metaclass = ModelMetaclass):
         args.append(self.getValue(self.__primary_key__))
         rows = await execute(self.__update__, args)
         if rows != 1:
-            logging.warning('failed to update: affected rows: %s' % rows)
+            logging.warning('orm.py: failed to update: affected rows: %s' % rows)
 
     async def remove(self):
         'remove object'
         args = [self.getValue(self.__primary_key__)]
         rows = await execute(self.__delete__, args)
         if rows != 1:
-            logging.warning('failed to delete record: affected rows: %s' % rows)
+            logging.warning('orm.py: failed to delete record: affected rows: %s' % rows)
 
     async def save(self):
         args = list(map(self.getValueOrDefault, self.__fields__))
         args.append(self.getValueOrDefault(self.__primary_key__))
         rows = await execute(self.__insert__, args)
         if rows != 1:
-            logging.warning('failed to insert record: affected rows: %s' % rows)
+            logging.warning('orm.py: failed to insert record: affected rows: %s' % rows)
 
 
