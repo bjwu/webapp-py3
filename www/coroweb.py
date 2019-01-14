@@ -51,7 +51,7 @@ def get_named_kw_args(fn):
     for name, param in params.items():
         if param.kind == inspect.Parameter.KEYWORD_ONLY:
             args.append(name)
-        return tuple(args)
+    return tuple(args)
 
 def has_named_kw_arg(fn):
     params = inspect.signature(fn).parameters
@@ -73,9 +73,9 @@ def has_request_arg(fn):
         if name == 'request':
             found = True
             continue
-        if found and (param.kind != inspect.Parameter.VAR_POSITIONAL and param.kind != inspect.Parameter.KEYWORD_ONLY and param.kind != inspect.Parameter.VAR_KEYWORD ):
+        if found and (param.kind != inspect.Parameter.VAR_POSITIONAL and param.kind != inspect.Parameter.KEYWORD_ONLY and param.kind != inspect.Parameter.VAR_KEYWORD):
             raise ValueError('coroweb.py: Request parameter must be the last named parameter in function: %s%s' %(fn.__name__, str(sig)))
-        return found
+    return found
 
 class RequestHandler(object):
     '''
@@ -85,8 +85,8 @@ class RequestHandler(object):
         self._app = app
         self._func = fn
         self._has_request_arg = has_request_arg(fn)
-        self._has_var_kw_arg = has_var_kw_arg(fn)
-        self._has_named_kw_args = has_named_kw_arg(fn)
+        self._has_var_kw_arg = has_var_kw_arg(fn)   # **kwargs
+        self._has_named_kw_args = has_named_kw_arg(fn)   # Parameter after * & *args
         self._named_kw_args = get_named_kw_args(fn)
         self._required_kw_args = get_required_kw_args(fn)
 
@@ -130,13 +130,13 @@ class RequestHandler(object):
             # check name arg:
             for k, v in request.match_info.items():
                 if k in kw:
-                    logging.warning('coroweb.py: Dupilicate arg name in named arg and kw args: %s' %k)
-                    kw[k] = v
+                    logging.warning('coroweb.py: Duplicate arg name in named arg and kw args: %s' % k)
+                kw[k] = v
         if self._has_request_arg:
             kw['request'] = request
         if self._required_kw_args:
             for name in self._required_kw_args:
-                if not name in kw:
+                if not (name in kw):
                     return web.HTTPBadRequest('coroweb.py: Missing argument: %s' % name)
         logging.info('coroweb.py: call with args: %s' % str(kw))
         try:
@@ -179,6 +179,7 @@ def add_routes(app, module_name):
             # 排除'handler'模块里 import 的函数
             method = getattr(fn, '__method__', None)
             path = getattr(fn, '__route__', None)
+
             if method and path:
                 add_route(app, fn)
 

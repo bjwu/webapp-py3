@@ -108,7 +108,7 @@ async def api_register_user(*, email, name, passwd):
 
 @get('/signout')
 def signout(request):
-    referer = request.header.get('Referer')
+    referer = request.headers.get('Referer')
     r = web.HTTPFound(referer or '/')
     r.set_cookie(COOKIE_NAME, '-delete-', max_age=0, httponly=True)
     logging.info('user signed out')
@@ -137,8 +137,3 @@ async def authenticate(*, email, passwd):
     r.content_type = 'application/json'
     r.body = json.dumps(user, ensure_ascii=False).encode('utf-8')
     return r
-
-
-
-
-
