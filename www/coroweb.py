@@ -1,5 +1,3 @@
-
-
 import functools, logging, os
 import asyncio, inspect
 from aiohttp import web
@@ -100,13 +98,13 @@ class RequestHandler(object):
                 if not request.content_type:
                     return web.HTTPBadRequest('coroweb.py: Missing Content-type.')
                 ct = request.content_type
-                if ct.startwith('application/json'):
+                if ct.startswith('application/json'):
                     # Read request body decoded as json.
                     params = await request.json()
                     if not isinstance(params, dict):
                         return web.HTTPBadRequest('coroweb.py: JSON body must be object')
                     kw = params
-                elif ct.startwith('application/x-www-form-urlencoded') or ct.startwith('multipart/form-data'):
+                elif ct.startswith('application/x-www-form-urlencoded') or ct.startswith('multipart/form-data'):
                     # A coroutine that reads POST parameters from request body.
                     params = await request.post()
                     kw = dict(**params)
@@ -128,9 +126,11 @@ class RequestHandler(object):
                 for name in self._named_kw_args:
                     if name in kw:
                         copy[name] = kw[name]
-                for k, v in request.match_info.items():
-                    if k in kw:
-                        logging.warning('coroweb.py: Dupilicate arg name in named arg and kw args: %s' %k)
+                kw = copy
+            # check name arg:
+            for k, v in request.match_info.items():
+                if k in kw:
+                    logging.warning('coroweb.py: Dupilicate arg name in named arg and kw args: %s' %k)
                     kw[k] = v
         if self._has_request_arg:
             kw['request'] = request
@@ -143,7 +143,7 @@ class RequestHandler(object):
             r = await self._func(**kw)
             return r
         except APIError as e:
-            return dict(error=e.error, date=e.date, message=e.message)
+            return dict(error=e.error, data=e.data, message=e.message)
 
 def add_static(app):
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
@@ -181,6 +181,4 @@ def add_routes(app, module_name):
             path = getattr(fn, '__route__', None)
             if method and path:
                 add_route(app, fn)
-
-
 
