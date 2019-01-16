@@ -204,6 +204,19 @@ class Model(dict, metaclass = ModelMetaclass):
             return None
         return [cls(**r) for r in rs]
 
+    @classmethod
+    async def findNumber(cls, selectField, where=None, args=None):
+        'find number by select and where'
+        sql = ['select %s _num_ from `%s`' %(selectField, cls.__table__)]
+        if where:
+            sql.append('where')
+            sql.append(where)
+        rs = await select(''.join(sql), args, 1)
+        if len(rs) == 0:
+            return None
+        return rs[0]['_num_']
+
+
     async def update(self):
         'update object'
         args = list(map(self.getValue, self.__fields__))
